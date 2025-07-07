@@ -136,7 +136,6 @@ Return ONLY a JSON object with this exact structure:
     itemIds: input.closetItems ? input.closetItems.slice(0, 2).map(item => item.id) : []
   };
 };
-});
 
 const generateOutfitIdeaFlow = async (input: GenerateOutfitIdeaInput): Promise<GenerateOutfitIdeaOutput> => {
   return generateOutfitWithGemini(input);
