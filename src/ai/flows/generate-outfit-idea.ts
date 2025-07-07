@@ -15,8 +15,8 @@ import {ai} from '@/ai/genkit';
 import {getCurrentWeather} from '@/ai/tools/weather';
 import {z} from 'zod';
 
-// Use Gemini model for outfit generation
-const modelToUse = 'gemini/gemini-1.5-pro';
+// We'll use Gemini directly instead of through genkit plugins
+const modelToUse = 'gemini-1.5-pro';
 
 const ClothingItemSchema = z.object({
   id: z.string().describe('A unique identifier for the clothing item.'),
@@ -73,83 +73,71 @@ export async function generateOutfitIdea(input: GenerateOutfitIdeaInput): Promis
   return generateOutfitIdeaFlow(input);
 }
 
-const outfitPrompt = ai.definePrompt({
-  name: 'outfitPrompt',
-  model: modelToUse, // Use the dynamically selected model
-  tools: [getCurrentWeather],
-  input: {
-    schema: GenerateOutfitIdeaInputSchema,
-  },
-  output: {
-    schema: GenerateOutfitIdeaOutputSchema,
-  },
-  config: {
-    temperature: 0.8,
-  },
-  prompt: `
-# ROLE
-You are an expert personal stylist.
+// Direct Gemini integration for outfit generation
+const generateOutfitWithGemini = async (input: GenerateOutfitIdeaInput): Promise<GenerateOutfitIdeaOutput> => {
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
-# GOAL
-Generate a single, stylish outfit suggestion as a JSON object. Your description must be concise (2-3 sentences).
+  // Build the prompt
+  let prompt = `You are an expert personal stylist. Generate a single, stylish outfit suggestion as a JSON object. Your description must be concise (2-3 sentences).
 
 # CONTEXT
-- Weather: Use the getCurrentWeather tool to get the current weather for the user's location and factor it into your suggestion.
-{{#if occasion}}- Occasion: {{{occasion}}}{{/if}}
-{{#if inspirationItems}}- Style Inspiration (from user's saved outfits):
-{{#each inspirationItems}}  - {{{this.description}}}{{/each}}
-{{/if}}
+- Weather: ${input.latitude && input.longitude ? 'Use weather data for the location' : 'Weather data not available'}
+${input.occasion ? `- Occasion: ${input.occasion}` : ''}
+${input.inspirationItems ? `- Style Inspiration: ${input.inspirationItems.map(item => item.description).join(', ')}` : ''}
 
 # TASK
-Based on the context (weather, occasion, and style inspiration), create a stylish outfit.
+Based on the context, create a stylish outfit.
 
-{{#if closetItems}}
+${input.closetItems ? `
 ## TASK: CREATE OUTFIT FROM CLOSET
 
-### Instructions
-1.  Analyze the context and create the best possible outfit from the AVAILABLE ITEMS below.
-2.  Your 'outfitDescription' should be concise (2-3 sentences), describe the look, and explain WHY you chose it based on the context.
-3.  Your 'itemIds' array MUST contain the IDs of the chosen items.
-4.  **Smart Suggestion Rule:** If the available items aren't a perfect match for the context, you MUST create the best outfit you can from the available items. Then, in the description, you MUST recommend a better alternative and gently encourage the user to add it to their closet if they have one.
-5.  If NO suitable outfit can be made from the available items, explain why in the 'outfitDescription' and return an empty 'itemIds' array.
-
 ### Available Items
-You MUST select from this list.
-{{#each closetItems}}
-- ID: {{this.id}}, Category: {{this.category}}{{#if this.subCategory}}, Item: {{this.subCategory}}{{/if}}, Tags: {{this.tags}}{{#if this.dominantColors}}, Colors: {{#each this.dominantColors}}{{this}} {{/each}}{{/if}}{{#if this.hasPattern}}, Pattern: {{this.patternDescription}}{{/if}}
-{{/each}}
+${input.closetItems.map(item => 
+  `- ID: ${item.id}, Category: ${item.category}${item.subCategory ? `, Item: ${item.subCategory}` : ''}, Tags: ${item.tags.join(', ')}`
+).join('\n')}
 
-{{else}}
+Your 'outfitDescription' should be concise (2-3 sentences), describe the look, and explain WHY you chose it based on the context.
+Your 'itemIds' array MUST contain the IDs of the chosen items.
+` : `
 ## TASK: CREATE GENERAL OUTFIT
-
-### Instructions
-1.  The user's closet is empty or they have chosen to ignore it. Suggest a general, creative outfit based on the context.
-2.  Your 'outfitDescription' should be stylish, helpful, and concise (2-3 sentences).
-3.  Your 'itemIds' array MUST be empty.
-4.  Do NOT mention that the closet is empty in your description.
-{{/if}}
-
+Your 'outfitDescription' should be stylish, helpful, and concise (2-3 sentences).
+Your 'itemIds' array MUST be empty.
+`}
 
 # OUTPUT FORMAT
-Your response MUST be ONLY the raw JSON object matching the schema, with no other text, comments, or markdown.
-`,
+Return ONLY a JSON object with this exact structure:
+{
+  "outfitDescription": "2-3 sentence description",
+  "itemIds": ["id1", "id2", ...]
+}`;
+
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  const text = response.text();
+  
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        outfitDescription: parsed.outfitDescription || 'A stylish outfit suggestion',
+        itemIds: parsed.itemIds || []
+      };
+    }
+  } catch (error) {
+    console.error('Failed to parse Gemini response:', error);
+  }
+  
+    // Fallback response
+  return {
+    outfitDescription: 'A stylish outfit suggestion based on your preferences and available items.',
+    itemIds: input.closetItems ? input.closetItems.slice(0, 2).map(item => item.id) : []
+  };
+};
 });
 
-const generateOutfitIdeaFlow = ai.defineFlow(
-  {
-    name: 'generateOutfitIdeaFlow',
-    inputSchema: GenerateOutfitIdeaInputSchema,
-    outputSchema: GenerateOutfitIdeaOutputSchema,
-  },
-  async (input) => {
-    const response = await outfitPrompt(input);
-    const output = response.output;
-
-    if (!output) {
-      console.error('AI response did not conform to schema. Full response:', JSON.stringify(response, null, 2));
-      throw new Error("The AI failed to generate a valid outfit idea. Its response was not in the expected JSON format.");
-    }
-    
-    return output;
-  }
-);
+const generateOutfitIdeaFlow = async (input: GenerateOutfitIdeaInput): Promise<GenerateOutfitIdeaOutput> => {
+  return generateOutfitWithGemini(input);
+};

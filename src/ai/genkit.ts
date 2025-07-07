@@ -5,49 +5,10 @@
 import 'dotenv/config';
 
 import {genkit} from 'genkit';
-import {GoogleGenerativeAI} from '@google/generative-ai';
 
 const geminiAPIKey = process.env.GEMINI_API_KEY;
-const plugins: any[] = [];
 
-// Custom Gemini plugin for genkit
-const createGeminiPlugin = (apiKey: string) => {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  
-  return {
-    name: 'gemini',
-    models: {
-      'gemini/gemini-1.5-flash': {
-        generateContent: async (request: any) => {
-          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-          const result = await model.generateContent(request.prompt);
-          const response = await result.response;
-          return { text: response.text() };
-        },
-      },
-      'gemini/gemini-1.5-pro': {
-        generateContent: async (request: any) => {
-          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
-          const result = await model.generateContent(request.prompt);
-          const response = await result.response;
-          return { text: response.text() };
-        },
-      },
-      'gemini/gemini-1.5-flash-latest': {
-        generateContent: async (request: any) => {
-          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
-          const result = await model.generateContent(request.prompt);
-          const response = await result.response;
-          return { text: response.text() };
-        },
-      },
-    },
-  };
-};
-
-if (geminiAPIKey) {
-  plugins.push(createGeminiPlugin(geminiAPIKey));
-} else {
+if (!geminiAPIKey) {
   console.warn(
     '\n' +
     '******************************************************************************************\n' +
@@ -59,5 +20,6 @@ if (geminiAPIKey) {
 }
 
 export const ai = genkit({
-  plugins,
+  // For now, we'll use a basic configuration without custom plugins
+  // The AI flows will handle Gemini integration directly
 });
