@@ -15,9 +15,8 @@ import {ai} from '@/ai/genkit';
 import {getCurrentWeather} from '@/ai/tools/weather';
 import {z} from 'zod';
 
-// Determine the model to use based on available API keys.
-// This prevents the server from crashing if a key is missing.
-const modelToUse = process.env.GROQ_API_KEY ? 'groq/llama3-8b-8192' : 'openai/gpt-4o';
+// Use Gemini model for outfit generation
+const modelToUse = 'gemini/gemini-1.5-pro';
 
 const ClothingItemSchema = z.object({
   id: z.string().describe('A unique identifier for the clothing item.'),
@@ -67,9 +66,9 @@ const GenerateOutfitIdeaOutputSchema = z.object({
 export type GenerateOutfitIdeaOutput = z.infer<typeof GenerateOutfitIdeaOutputSchema>;
 
 export async function generateOutfitIdea(input: GenerateOutfitIdeaInput): Promise<GenerateOutfitIdeaOutput> {
-  // Check if any AI plugin is available before running the flow
-  if (!process.env.GROQ_API_KEY && !process.env.OPENAI_API_KEY) {
-    throw new Error("No AI API key found. Please set either GROQ_API_KEY or OPENAI_API_KEY in your .env file.");
+  // Check if Gemini API key is available before running the flow
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("No Gemini API key found. Please set GEMINI_API_KEY in your .env file.");
   }
   return generateOutfitIdeaFlow(input);
 }

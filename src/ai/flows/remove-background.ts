@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -11,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'zod';
+import {GoogleGenerativeAI} from '@google/generative-ai';
 
 const RemoveBackgroundInputSchema = z.object({
   photoDataUri: z
@@ -37,9 +37,43 @@ const removeBackgroundFlow = ai.defineFlow(
     outputSchema: RemoveBackgroundOutputSchema,
   },
   async (input) => {
-    // This feature is temporarily disabled as it requires a specific Google AI model.
-    // The application has been configured to use OpenAI-only.
-    // To prevent crashes, we are just returning the original image.
-    return { photoDataUri: input.photoDataUri };
+    try {
+      const geminiAPIKey = process.env.GEMINI_API_KEY;
+      if (!geminiAPIKey) {
+        throw new Error('Gemini API key not found');
+      }
+
+      const genAI = new GoogleGenerativeAI(geminiAPIKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+
+      // Convert data URI to base64
+      const base64Data = input.photoDataUri.split(',')[1];
+      
+      // Create image part for Gemini
+      const imagePart = {
+        inlineData: {
+          data: base64Data,
+          mimeType: 'image/jpeg' // You might want to detect this from the data URI
+        }
+      };
+
+      // Use Gemini to generate a new image with transparent background
+      const prompt = `Remove the background from this clothing item image and return a new image with a transparent background. Focus only on the clothing item and make the background completely transparent.`;
+
+      const result = await model.generateContent([prompt, imagePart]);
+      const response = await result.response;
+      
+      // Note: Gemini's current API doesn't directly return images with transparent backgrounds
+      // This is a limitation of the current API. For now, we'll return the original image
+      // In a production environment, you might want to use a dedicated background removal service
+      
+      console.log('Background removal requested, but Gemini API limitation prevents transparent background generation');
+      return { photoDataUri: input.photoDataUri };
+      
+    } catch (error) {
+      console.error('Background removal failed:', error);
+      // Fallback to original image
+      return { photoDataUri: input.photoDataUri };
+    }
   }
 );

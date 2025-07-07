@@ -56,7 +56,7 @@ export async function tagClothingItem(input: TagClothingItemInput): Promise<TagC
 
 const prompt = ai.definePrompt({
   name: 'tagClothingItemPrompt',
-  model: 'openai/gpt-4o',
+  model: 'gemini/gemini-1.5-flash-latest',
   input: {schema: TagClothingItemInputSchema},
   output: {schema: TagClothingItemOutputSchema},
   prompt: `You are an AI assistant specialized in analyzing and tagging clothing items from images.
